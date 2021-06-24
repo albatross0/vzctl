@@ -84,6 +84,34 @@ int init_device_addresses(int sock, const char* device)
 	return 0;
 }
 
+int set_hwaddr(char *arg)
+{
+	char *hexstring = arg;
+	__u8 binaddr[6];
+
+	int count = 0;
+	char tmpbuf[12];
+	for (; count < 12 && *hexstring != 0x00; hexstring++) {
+		if (! isxdigit(*hexstring)) {
+			continue;
+		}
+		tmpbuf[count] = *hexstring;
+		count++;
+	}
+
+	if (count < 12 || *hexstring != 0x00) {
+		fprintf(stderr, "Failed to parse mac_address\n");
+		return -1;
+	}
+
+	for (int i = 0; i < 12; i+=2) {
+		sscanf(&tmpbuf[i], "%2hhx", &binaddr[i/2]);
+	}
+
+	memcpy(real_hwaddr, binaddr, 6);
+	return 0;
+}
+
 int sock;
 struct nd_packet pkt;
 
@@ -126,8 +154,17 @@ int main(int argc,char** argv)
 {
 	int value;
 
-	if (inet_pton(AF_INET6, argv[1], &src_ipaddr) <= 0)
+	if (argc != 3 && argc != 4) {
+		printf("Usage: ndsend <address> <interface> [mac_address]\n"
+		       "example: ndsend  2001:db8::1  eth0  00:11:22:33:44:55\n");
+		exit(EXC_USAGE);
+	}
+
+	if (inet_pton(AF_INET6, argv[1], &src_ipaddr) <= 0) {
+		fprintf(stderr, "Invalid IPv6 address\n");
 		return -1;
+	}
+
 	iface = argv[2];
 
 	sock = socket(PF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
@@ -137,6 +174,9 @@ int main(int argc,char** argv)
 	}
 
 	if (init_device_addresses(sock, iface) < 0)
+		exit(EXC_SYS);
+
+	if (argv[3] != NULL && set_hwaddr(argv[3]) < 0)
 		exit(EXC_SYS);
 
 	value = 255;
